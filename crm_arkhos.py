@@ -5,7 +5,7 @@ import pandas as pd
 # --- 1. CONFIGURAÇÕES ---
 NOME_AGENCIA = "Agência Arkhos"
 DB_NAME = 'banco_arkhos.db'
-SENHA_MESTRA = "admin123" # Altere para sua senha
+SENHA_MESTRA = "admin123" # Altere aqui para sua senha de preferência
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -34,11 +34,10 @@ else:
     st.sidebar.info("🔒 Visualização")
     menu = "📊 Dashboard"
 
-# --- 3. TELAS ---
+# --- 3. LÓGICA DAS TELAS ---
 
 if menu == "📊 Dashboard":
     st.title(f"📈 Painel {NOME_AGENCIA}")
-    # Forçamos a leitura fresca do banco toda vez que entra no Dashboard
     conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query("SELECT * FROM clientes", conn)
     conn.close()
@@ -51,71 +50,93 @@ if menu == "📊 Dashboard":
         st.divider()
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.info("Nenhum cliente cadastrado.")
+        st.info("Nenhum cliente cadastrado ainda.")
 
 elif menu == "➕ Novo Cadastro":
-    st.title("📝 Novo Cadastro")
+    st.title("📝 Novo Cadastro de Cliente")
     with st.form("form_novo", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             nome = st.text_input("Nome/Empresa")
-            atendente = st.text_input("Atendente")
-            valor = st.number_input("Valor (R$)", min_value=0.0)
+            atendente = st.text_input("Atendente Responsável")
+            valor = st.number_input("Valor Mensal (R$)", min_value=0.0)
         with col2:
             opcoes = ["Tráfego Pago", "Social Midia", "Criativos", "Sites", "Análise de Dados", "Outros"]
-            servico = st.selectbox("Serviço", opcoes)
-            meses = st.number_input("Meses", min_value=1, value=6)
-            status = st.select_slider("Status", ["Lead", "Proposta", "Fechado", "Em Execução"])
+            servico = st.selectbox("Tipo de Serviço", opcoes)
+            meses = st.number_input("Duração Contrato (Meses)", min_value=1, value=6)
+            status = st.select_slider("Status do Projeto", ["Lead", "Proposta", "Fechado", "Em Execução"])
         
-        if st.form_submit_button("Salvar"):
+        detalhes = st.text_area("Observações Adicionais")
+        
+        if st.form_submit_button("Salvar Cliente"):
             if nome:
                 conn = sqlite3.connect(DB_NAME)
                 c = conn.cursor()
-                c.execute("INSERT INTO clientes (nome, servico, atendente, status, valor, contrato_meses) VALUES (?,?,?,?,?,?)",
-                          (nome, servico, atendente, status, valor, meses))
+                c.execute("INSERT INTO clientes (nome, servico, detalhes, atendente, status, valor, contrato_meses) VALUES (?,?,?,?,?,?,?)",
+                          (nome, servico, detalhes, atendente, status, valor, meses))
                 conn.commit()
                 conn.close()
-                st.success("Cadastrado!")
+                st.success(f"✅ {nome} cadastrado com sucesso!")
                 st.rerun()
 
 elif menu == "⚙️ Gerenciar Base":
-    st.title("⚙️ Gerenciar Clientes")
+    st.title("⚙️ Edição Completa de Clientes")
     conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query("SELECT * FROM clientes", conn)
     conn.close()
 
     if not df.empty:
-        nome_sel = st.selectbox("Escolha o Cliente", df['nome'].tolist())
+        nome_sel = st.selectbox("Selecione o Cliente para editar:", df['nome'].tolist())
         cliente = df[df['nome'] == nome_sel].iloc[0]
+        id_cliente = int(cliente['id'])
+
+        st.subheader(f"Editando informações de: {nome_sel}")
         
-        col_ed, col_ex = st.columns(2)
-
-        with col_ed:
-            st.subheader("Editar")
-            # Adicionamos o parâmetro 'key' único para cada campo
-            novo_st = st.selectbox("Status", ["Lead", "Proposta", "Fechado", "Em Execução"], 
-                                   index=["Lead", "Proposta", "Fechado", "Em Execução"].index(cliente['status']),
-                                   key=f"st_{cliente['id']}")
-            novo_vl = st.number_input("Valor", value=float(cliente['valor']), key=f"vl_{cliente['id']}")
+        # FORMULÁRIO DE EDIÇÃO TOTAL
+        with st.form("form_edicao"):
+            col1, col2 = st.columns(2)
             
-            if st.button("Salvar Alterações", key="btn_save"):
+            with col1:
+                ed_nome = st.text_input("Editar Nome/Empresa", value=cliente['nome'])
+                ed_atendente = st.text_input("Editar Atendente", value=cliente['atendente'])
+                ed_valor = st.number_input("Editar Valor (R$)", value=float(cliente['valor']))
+            
+            with col2:
+                opcoes = ["Tráfego Pago", "Social Midia", "Criativos", "Sites", "Análise de Dados", "Outros"]
+                idx_servico = opcoes.index(cliente['servico']) if cliente['servico'] in opcoes else 0
+                ed_servico = st.selectbox("Editar Serviço", opcoes, index=idx_servico)
+                
+                ed_meses = st.number_input("Editar Meses", value=int(cliente['contrato_meses']))
+                
+                status_opcoes = ["Lead", "Proposta", "Fechado", "Em Execução"]
+                idx_status = status_opcoes.index(cliente['status']) if cliente['status'] in status_opcoes else 0
+                ed_status = st.selectbox("Editar Status", status_opcoes, index=idx_status)
+            
+            ed_detalhes = st.text_area("Editar Observações", value=cliente['detalhes'])
+            
+            # Botão de salvar dentro do formulário
+            if st.form_submit_button("💾 SALVAR TODAS AS ALTERAÇÕES"):
                 conn = sqlite3.connect(DB_NAME)
                 c = conn.cursor()
-                # Comando SQL direto para garantir a gravação
-                c.execute("UPDATE clientes SET status = ?, valor = ? WHERE id = ?", (novo_st, novo_vl, int(cliente['id'])))
+                c.execute("""UPDATE clientes 
+                             SET nome=?, servico=?, detalhes=?, atendente=?, status=?, valor=?, contrato_meses=? 
+                             WHERE id=?""", 
+                          (ed_nome, ed_servico, ed_detalhes, ed_atendente, ed_status, ed_valor, ed_meses, id_cliente))
                 conn.commit()
                 conn.close()
-                st.success("Alterado com sucesso!")
-                # Aguarda um segundo e recarrega
+                st.success("✅ Cadastro atualizado com sucesso!")
                 st.rerun()
 
-        with col_ex:
-            st.subheader("Excluir")
-            if st.button(f"Remover {nome_sel}", type="primary"):
-                conn = sqlite3.connect(DB_NAME)
-                c = conn.cursor()
-                c.execute("DELETE FROM clientes WHERE id = ?", (int(cliente['id']),))
-                conn.commit()
-                conn.close()
-                st.warning("Removido!")
-                st.rerun()
+        st.divider()
+        # ÁREA DE EXCLUSÃO (Fora do formulário de edição)
+        st.subheader("🗑️ Zona de Exclusão")
+        if st.button(f"REMOVER {nome_sel.upper()} DA BASE", type="primary"):
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("DELETE FROM clientes WHERE id=?", (id_cliente,))
+            conn.commit()
+            conn.close()
+            st.warning("Cliente removido permanentemente.")
+            st.rerun()
+    else:
+        st.info("Não há clientes cadastrados para gerenciar.")
